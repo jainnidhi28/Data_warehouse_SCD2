@@ -1,9 +1,7 @@
-.venv/
+.env
 venv/
+.venv/
 __pycache__/
 *.pyc
-
-.env
-
-.vscode/
-.idea/
+.pytest_cache/
+staging/
