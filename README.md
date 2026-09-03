@@ -1,159 +1,269 @@
 # Data Warehouse ETL Pipeline
 
-## 📌 Project Overview
+A production-style batch ETL pipeline built with **Python, Pandas and PostgreSQL**.
 
-This project implements an end-to-end Data Warehouse ETL pipeline using Python, Pandas, and PostgreSQL.
+The project extracts customer, product and order data from CSV files, transforms the data, applies Slowly Changing Dimension Type 2 (SCD2) logic to customers, and loads the processed data into a dimensional data warehouse.
 
-The pipeline extracts customer, product, and order data from CSV files, transforms the data into a warehouse-friendly structure, and loads it into a PostgreSQL Data Warehouse using a Star Schema.
-
-The project also implements Slowly Changing Dimension (SCD) Type 2 to maintain historical customer information.
-
----
-
-## 🏗️ Architecture
+## Architecture
 
 ```text
-CSV Files
-   │
-   ▼
+                    CSV SOURCE DATA
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+      customers.csv  products.csv   orders.csv
+          │              │              │
+          └──────────────┼──────────────┘
+                         ↓
+                     EXTRACT
+                         ↓
+                    TRANSFORM
+              ┌──────────┼──────────┐
+              │          │          │
+          Customers   Products    Orders
+              │          │          │
+           SCD Type 2    │          │
+              │          │          │
+              └──────────┼──────────┘
+                         ↓
+                       LOAD
+                         ↓
+              ┌─────────────────────┐
+              │   PostgreSQL DW     │
+              │                     │
+              │ dim_customer        │
+              │ dim_product         │
+              │ dim_date            │
+              │ fact_sales          │
+              └─────────────────────┘
+                         ↓
+                 Analytical Queries
+```
+
+## Tech Stack
+
+* Python
+* Pandas
+* PostgreSQL
+* psycopg
+* SQL
+* pytest
+* python-dotenv
+
+## Key Features
+
+### ETL Pipeline
+
+* CSV-based data extraction
+* Data transformation using Pandas
+* Data validation
+* Duplicate removal
+* Data type conversion
+* Fact and dimension creation
+
+### Data Warehouse
+
+Uses a dimensional model containing:
+
+* `dim_customer`
+* `dim_product`
+* `dim_date`
+* `fact_sales`
+
+### Slowly Changing Dimension Type 2
+
+Customer changes are tracked historically.
+
+For example:
+
+```text
+Customer 101
+
+Version 1
+Mumbai
+is_current = FALSE
+
+        ↓ city changes
+
+Version 2
+Nashik
+is_current = TRUE
+```
+
+This preserves the customer's historical state.
+
+### Incremental Processing
+
+The pipeline supports incremental order processing using a PostgreSQL metadata table.
+
+```text
+pipeline_metadata
+        ↓
+last_processed_date
+        ↓
+lookback window
+        ↓
+incremental orders
+```
+
+A one-day lookback is used to reduce the risk of missing late-arriving records.
+
+### UPSERT
+
+Fact records use PostgreSQL UPSERT logic.
+
+Existing orders are updated while new orders are inserted.
+
+### Transaction Handling
+
+Database operations use transactions with rollback handling.
+
+If a load operation fails:
+
+```text
+Load
+ ↓
+Error
+ ↓
+ROLLBACK
+ ↓
+No partial transaction
+```
+
+### Data Quality
+
+The pipeline performs checks for:
+
+* Empty warehouse tables
+* Duplicate order IDs
+* NULL values
+* Invalid quantities
+* Negative sales amounts
+* Invalid customer keys
+* Invalid product keys
+* Invalid date keys
+
+### Testing
+
+Transformation logic is tested using `pytest`.
+
+Run:
+
+```bash
+python -m pytest
+```
+
+Expected result:
+
+```text
+4 passed
+```
+
+## Project Structure
+
+```text
+data-warehouse-etl/
+│
+├── data/
+│   ├── customers.csv
+│   ├── products.csv
+│   └── orders.csv
+│
+├── tests/
+│   ├── __init__.py
+│   └── test_transform.py
+│
+├── extract.py
+├── transform.py
+├── load.py
+├── main.py
+├── config.py
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd data-warehouse-etl
+```
+
+### 2. Create a virtual environment
+
+```bash
+python -m venv venv
+```
+
+Activate it on Windows:
+
+```powershell
+venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create a `.env` file based on `.env.example`.
+
+Example:
+
+```text
+DATABASE_HOST=localhost
+DATABASE_PORT=5433
+DATABASE_NAME=your_database
+DATABASE_USER=your_user
+DATABASE_PASSWORD=your_password
+```
+
+### 5. Run the ETL pipeline
+
+```bash
+python main.py
+```
+
+### 6. Run tests
+
+```bash
+python -m pytest
+```
+
+## Pipeline Flow
+
+```text
 Extract
-   │
-   ▼
+   ↓
 Transform
-   │
-   ├───────────────┐
-   ▼               ▼
-Customer SCD2    Products
-   │               │
-   ▼               ▼
-dim_customer    dim_product
-       │             │
-       └──────┬──────┘
-              ▼
-          fact_sales
-              ▲
-              │
-          dim_date
-              │
-              ▼
-       Analytical Queries
+   ↓
+Customer SCD2
+   ↓
+Dimension Loading
+   ↓
+Fact Loading
+   ↓
+Data Quality
+   ↓
+Incremental Watermark
+```
 
-ETL Pipeline
-1. Extract
+## Future Improvements
 
-Data is extracted from three CSV files:
+* Cloud storage integration
+* Apache Spark / PySpark processing
+* Azure Data Lake integration
+* CI/CD pipeline
+* Advanced monitoring
+* Streaming ingestion with Kafka
 
-customers.csv
-products.csv
-orders.csv
+## Author
 
-Python Pandas is used to read the files.
-
-2. Transform
-
-The transformation layer performs:
-
-Data cleaning
-String standardization
-Duplicate removal
-Data validation
-Date conversion
-Numeric conversion
-Surrogate key generation
-Date dimension creation
-Fact table preparation
-
-3. Load
-
-The transformed data is loaded into PostgreSQL.
-The warehouse contains:
-
-dim_customer
-dim_product
-dim_date
-fact_sales
-
-Star Schema
-
-The warehouse follows a Star Schema design.
-
-              dim_customer
-                    │
-                    │
-dim_product ─── fact_sales ─── dim_date
-Fact Table
-fact_sales
-
-Contains measurable business events.
-
-Columns:
-
-sales_key
-order_id
-customer_key
-product_key
-date_key
-quantity
-sales_amount
-Dimension Tables
-dim_customer
-
-Contains customer information.
-
-Important columns:
-
-customer_key
-customer_id
-customer_name
-city
-age
-start_date
-end_date
-is_current
-dim_product
-
-Contains product information.
-
-Columns:
-
-product_key
-product_id
-product_name
-category
-price
-dim_date
-
-Contains calendar information.
-
-Columns:
-
-date_key
-full_date
-day
-month
-quarter
-year
-
-Slowly Changing Dimension Type 2
-
-The customer dimension uses SCD Type 2 to preserve historical changes.
-
-For example, if Rahul moves from Mumbai to Nashik:
-
-customer_key | customer_id | city   | is_current
--------------|-------------|--------|------------
-1            | 101         | Mumbai | false
-7            | 101         | Nashik | true
-
-The old record is not overwritten.
-
-Instead:
-
-The old record is closed.
-end_date is populated.
-is_current becomes false.
-A new surrogate key is generated.
-A new customer version is inserted.
-The new record becomes current.
-
-This allows historical reporting.
+Built as part of a hands-on Data Engineering learning journey.
